@@ -1,8 +1,9 @@
 {
-    "name": "xisio/rbac-generator",
+    "name": "xisio/yii2-rbac-generator",
     "type": "library",
+	"minimum-stability":"dev",
     "require": {
-        "symfony/yaml": "^5.0"
+		"symfony/yaml": "^3.0 | ^4.0"
     },
     "authors": [
         {
@@ -16,3 +17,4 @@
 		}
 	}
 }
+

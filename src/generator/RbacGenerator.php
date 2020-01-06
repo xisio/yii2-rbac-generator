@@ -21,13 +21,7 @@ use yii\helpers\StringHelper;
 
 
 
-use cebe\yii2openapi\helper\ModelClass;
-
-/**
- *
- *
- */
-class ApiGenerator extends Generator
+class RbacGenerator extends Generator
 {
     /**
      * @var string path to the OpenAPI specification file. This can be an absolute path or a Yii path alias.
