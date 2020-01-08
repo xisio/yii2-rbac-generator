@@ -25,7 +25,7 @@ echo $form->field($generator, 'rbacYamlPath')->error(['encode' => false]);
 
 <div class="panel panel-default card">
     <div class="panel-heading card-header">
-        <?= $form->field($generator, 'generateMigrations')->checkbox() ?>
+        <?= $form->field($generator, 'generateRbacMigrations')->checkbox() ?>
     </div>
     <div class="panel-body card-body">
         <?= $form->field($generator, 'migrationPath') ?>
