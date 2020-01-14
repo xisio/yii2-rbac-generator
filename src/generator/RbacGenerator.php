@@ -23,7 +23,7 @@ use Symfony\Component\Yaml\Exception\ParseException;
 use Symfony\Component\Yaml\Yaml;
 
 use xisio\rbacgenerator\helper\ConvertAccessSetToRule;
-use xisio\rbacgenerator\helper\ConvertAccessSetToMigration;
+use xisio\rbacgenerator\helper\ConvertAccessSetToPermissions;
 
 
 class RbacGenerator extends Generator
@@ -32,6 +32,9 @@ class RbacGenerator extends Generator
 	 * @var string path to the OpenAPI specification file. This can be an absolute path or a Yii path alias.
 	 */
 	public $rbacYamlPath;
+
+
+	public $accessClassPath = '@app/controller';
 	/**
 	 * @var bool whether to generate Access from the yaml.
 	 */
@@ -66,6 +69,8 @@ class RbacGenerator extends Generator
 	 */
 	public $migrationNamespace = 'app/migrations';
 
+	private $permissions = [];
+
 
 	/**
 	 * @return string name of the code generator
@@ -99,10 +104,13 @@ class RbacGenerator extends Generator
 				['rbacYamlPath', 'validateYaml'],
 
 				[['accessClassNamespace'], 'required', 'when' => function (RbacGenerator $rbac) {
-				return (bool) $rbac->generateRbac;
+					return (bool) $rbac->generateRbac;
 				}],
 				[['migrationPath'], 'required', 'when' => function (RbacGenerator $rbac) {
-				return (bool) $model->generateRbacMigrations;
+					return (bool) $rbac->generateRbacMigrations;
+				}],
+				[['accessClassPath'], 'required', 'when' => function (RbacGenerator $rbac) {
+					return (bool) $rbac->generateAccessClass;
 				}],
 
 		]);
@@ -248,6 +256,42 @@ class RbacGenerator extends Generator
 		return $this->_yaml;
 	}
 
+	private function createPermissions(){
+		if(count($this->permissions)>0){
+			return ;
+		}
+		$defaultRules =  $this->_yaml['default'] ?? [];
+		foreach($this->_yaml['rules'] as $rule){
+			$localRules= [] ; //$defaultRules;
+			$ruleRoles = [];
+			foreach($rule['access'] as $role=>$access){
+				$defaultAccess = $defaultRules[$role] ?? [];
+				$permissionConverter = new ConvertAccessSetToPermissions($access,$rule['class']);
+				$permission = $permissionConverter->convert();
+				$localRules[$role] = '';
+				$this->permissions[] = [
+					'role' => $role,
+					'access' => $permission,
+					'class' => $rule['class'],
+				];
+
+			}
+			$rules = array_diff_key($defaultRules,$localRules);
+			if(count($rules)>0){
+				foreach($rules as $role=>$access){
+					$permissionConverter = new ConvertAccessSetToPermissions($access,$rule['class']);
+					$localRules[] = $role;
+					$permission = $permissionConverter->convert();
+					$this->permissions[] = [
+						'role' => $role,
+						'access' => $permission,
+						'class' => $rule['class'],
+					];
+				}
+			}
+		}
+	}
+
 
 	/**
 	 * Generates the code based on the current user input and the specified code template files.
@@ -261,65 +305,60 @@ class RbacGenerator extends Generator
 		$files = [];
 		$this->readYaml($this->rbacYamlPath);
 
-		$defaultRules =  $this->_yaml['default'] ?? [];
 		if ($this->generateRbacMigrations) {
-			foreach($this->_yaml['rules'] as $rule){
-				$localRules= [] ; //$defaultRules;
-				$ruleRoles = [];
-				foreach($rule['access'] as $role=>$access){
-					$defaultAccess = $defaultRules[$role] ?? [];
-					$migrationConverter = new ConvertAccessSetToMigration($access,$rule['class']);
-					$localRules[$role] = '';
-					$permissions[] = [
-						'role' => $role,
-						'access' => $migrationConverter->convert(),
-					];
-
-				}
-				$rules = array_diff_key($defaultRules,$localRules);
-				if(count($rules)>0){
-					foreach($rules as $role=>$access){
-					$migrationConverter = new ConvertAccessSetToMigration($access,$rule['class']);
-					$localRules[] = $role;
-						$permissions[] = [
-							'role' => $role,
-							'access' => $migrationConverter->convert(),
-						];
-					}
-				}
-			}
-			$className = $rule['class'].'_'.$role;
+			$this->createPermissions(); 
+			$className = 'm'.date('ymd_000000').'_rbac';
 			$files[] = new CodeFile(
 				Yii::getAlias("$this->migrationPath/$className.php"),
 				$this->render('migration.php', [
-					'permissions' => $permissions,
+					'permissions' => $this->permissions,
 					'namespaceName' => $this->migrationNamespace ,
 					'className' => $className,
 				])
 			);
 		}
-/*
-		if($this->generateAccessClass){
-			$default = $this->_yaml['default']?? null;
-			foreach($this->_yaml['rules'] as $rule){
-				$accessConverter = new ConvertAccessSetToRule($rule,$default,$rule['class']);
 
-
-				$className = $rule['class'].'Access';
-				$migrationPath = $this->getPathFromNamespace($this->accessClassNamespace);
-				$rulesCode = $accessConverter->convert();
-				$files[] = new CodeFile(
-						Yii::getAlias("$migrationPath/$className.php"),
-						$this->render('access.php', [
-							'className' => $className,
-							'rule' => $rule,
-							'namespace' => $this->accessClassNamespace ,
-							'default' => $default,
-						])
-						);
+		if($this->generateAccessClass) {
+			$this->createPermissions(); 
+			$actions = [];
+			foreach($this->permissions as $permission){
+				$className = $permission['class'];
+				
+				foreach($permission['access'] as $access) {
+					$actionName = $access['action'];
+						if(!isset($actions[$className][$actionName])) {
+							if(!isset($actions[$className])){
+								$actions[$className] = [];
+							}
+							$actions[$className] = array_merge($actions[$className],[
+								$actionName => [
+									'allow' => true,
+									'roles' => [],
+								]
+							]); 
+						}
+					$actions[$className][$actionName]['roles'] = array_merge($actions[$className][$actionName]['roles'],[$permission['role']]);
+				}
 			}
+			foreach($actions as $className=>$access){
+				$className = ucfirst($className).'AccessControl';
+				$rules = [];
 
-		} */
+				foreach($access as $actionName=>$accesscontrol){
+					$accesscontrol['actions']= [$actionName];
+					$rules[] = $accesscontrol;
+				}
+				$files[] = new CodeFile(
+					Yii::getAlias("$this->accessClassPath/$className.php"),
+					$this->render('access.php', [
+						'rules' => $rules,
+						'namespaceName' => $this->accessClassNamespace,
+						'className' => $className,
+					])
+				);
+				
+			}
+		}
 		return $files;
 	}
 
