@@ -20,6 +20,9 @@ echo $form->field($generator, 'rbacYamlPath')->error(['encode' => false]);
     <div class="panel-body card-body">
         <?= $form->field($generator, 'accessClassNamespace') ?>
     </div>
+    <div class="panel-body card-body">
+        <?= $form->field($generator, 'accessClassPath') ?>
+    </div>
 </div>
 
 

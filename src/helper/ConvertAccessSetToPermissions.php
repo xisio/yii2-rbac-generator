@@ -2,7 +2,7 @@
 
 namespace xisio\rbacgenerator\helper;
 
-class ConvertAccessSetToMigration {
+class ConvertAccessSetToPermissions {
 	private $access;
 	private $modelName;
 	public function __construct($access,$modelName){
@@ -12,58 +12,69 @@ class ConvertAccessSetToMigration {
 
 	public function convert(){
 		$charSet = str_split($this->access);	
-		return $this->convertCharToName($charSet);
+		return $this->convertCharToPermission($charSet);
 	}
 	
-	public function convertCharToName($charSet){
+	public function convertCharToPermission($charSet){
 		$permission = [] ;
+		$action = '';
 		foreach($charSet as $character ){
 			$rule = [];
 			$str = '';
 			switch($character){
 				case "R":
 					$str = 'read';	
+					$action='index';
 					break;
 				case 'r':
 					$str = 'read';	
+					$action='index';
 					break;
 				case 't':
 					$str = 'read';
+					$action='index';
 					break;
 				case 'o':
-					$str = 'read';
+					$str = 'readOwn';
+					$action='index';
 					$rule[] = [
 						'name' => 'isAuthor',
-						'class' => 'common\rbac\AuthorRule',
+						'class' => '\common\rbac\AuthorRule',
 						'extend' => 'read'.ucfirst($this->modelName),
 					];
 					break;
 				case 'C':
 					$str = 'create';
+					$action='create';
 					break;
 				case 'U':
 					$str = 'update';
+					$action='update';
 					break;
 				case 'u':
 					$str = 'updateOwn';
+					$action='update';
 					$rule[] = [
 						'name' => 'isAuthor',
-						'class' => 'common\rbac\AuthorRule',
+						'class' => '\common\rbac\AuthorRule',
 						'extend' => 'update'.ucfirst($this->modelName),
 					];
 						
 					break;
 				case 'X':
 					$str = 'delete';
+					$action='delete';
 					break;
 				case 'D':
 					$str = 'delete';
+					$action='delete';
 					break;
 				case 'd':
 					$str = 'deleteOwn';
+					$action='delete';
 					$rule[] = [
 						'name' => 'isAuthor',
-						'class' => 'common\rbac\AuthorRule',
+						'class' => '\common\rbac\AuthorRule',
 						'extend' => 'delete'.ucfirst($this->modelName),
 					];
 					break;
@@ -72,7 +83,8 @@ class ConvertAccessSetToMigration {
 			}
 			$permission[] = [
 				'name' => $str.ucfirst($this->modelName),
-				'rule' => $rule
+				'rule' => $rule,
+				'action' => $action,
 			];
 		}
 		return $permission;

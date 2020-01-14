@@ -1,36 +1,46 @@
 <?php 
 $invertAccess = [];
 $roles = [];
-
+$rules = [];
 foreach($permissions as $permission){
-	$rules = [];
 	foreach($permission['access'] as $access ) {
+		$accessName = $access['name'];
 		
-		if(!isset($invertAccess[ $access['name'] ]) ) {
-			$invertAccess[ $access['name'] ] = [];
+		if(!isset($invertAccess[ $accessName ]) ) {
+			$invertAccess[ $accessName ] = [];
 		}
-		$invertAccess[ $access['name'] ]['role'][] =  $permission['role'];
+		$invertAccess[ $accessName ]['role'][] =  $permission['role'];
 		$roles[] = $permission['role'];
 		if(isset($access['rule']) && count($access['rule'])){
-			$rule = $invertAccess[ $access['name'] ]['rule'] ?? [];
-			$rule = array_merge($rule,array_values($access['rule']) ) ;
-			$invertAccess[ $access['name'] ] ['rule'] = $rule;
+			$accessrule = $access['rule'] ?? [];
+			if(!isset($invertAccess[ $accessName ] ['rule'])) {
+				$invertAccess[ $accessName ] ['rule'] = [];
+			}
+
+			foreach($accessrule as $rule){
+				$ruleName = $rule['name'];
+				$rules[$ruleName] = $rule;
+				$invertAccess[$accessName]['rule'][$ruleName] = $rule;
+			}
 		}
 	}
 }
 $roles = array_unique($roles);
 
-/* array of created role's , so we don't have to create new one */
+/* array of created role's , for prevent of duplicate */
 $createdRole = [];
 
 /* class starts here */
-echo '<?php'; ?>
+echo "<?php\n"; 
 
+?>
+<?php if(strlen($namespaceName) > 0) : ?>
 namespace <?= $namespaceName ?> ; 
+<?php endif; ?> 
 
 use yii\db\Migration;
 
-class m<?=date('Ymd_His_')?><?=$className?> extends Migration
+class <?=$className?> extends Migration
 {
     public function up()
     {
@@ -40,28 +50,36 @@ class m<?=date('Ymd_His_')?><?=$className?> extends Migration
 
         $<?=$role?> = $auth->createRole('<?=$role?>');
         $auth->add($<?=$role?>);
-<?php endforeach; ?>
-
+<?php endforeach; 
+?>
 <?php foreach($rules as $rule): ?>
-	$<?$rule['name']?> = new <?=$rule['class']?>;
+	$<?=$rule['name']?> = new <?=$rule['class']?>;
 	$auth->add($<?=$rule['name']?>);
 <?php endforeach; ?>
+
+/*create permissions*/
 <?php foreach($invertAccess as $permissionName=>$access) : 
 ?>
         // add "<?=$permissionName?>" permission
         $<?=$permissionName?> = $auth->createPermission('<?=$permissionName?>');
-<?php
-	$hasRule = $access['rule'] ?? false;
-	if($hasRule) : 	
+	<?php if(empty($access['rule'])) : ?>
+		$auth->add($<?=$permissionName?>);
+	<?php endif; ?> 
+<?php endforeach; ?> 
+
+
+<?php foreach($invertAccess as $permissionName=>$access) : 
+	$hasRule = $access['rule']?? false;
+	$rule = [];
+	if(is_array($hasRule)) : 	
 		$rule = array_shift($access['rule']);
 ?>
-        $<?=$permissionName?>->ruleName =  = $<?=$rule['name']?>->name ;
+        $<?=$permissionName?>->ruleName = $<?=$rule['name']?>->name ;
 	<?php endif; ?> 
-	$auth->add($<?=$permissionName?>);
 
-	<?php if($hasRule) : ?>
+	<?php if(isset($rule['extend'])) : ?>
+       		$auth->add($<?=$permissionName?>);
 		$auth->addChild($<?=$permissionName?>,$<?=$rule['extend']?>);
-		
 	<?php endif; ?>
 		<?php foreach($access['role'] as $role ) : ?> 
 			$auth->addChild($<?=$role?>,$<?=$permissionName?>);
@@ -69,5 +87,6 @@ class m<?=date('Ymd_His_')?><?=$className?> extends Migration
 		
 
 <?php endforeach; ?> 
+}
 
 }
