@@ -4,12 +4,16 @@ $roles = [];
 $rules = [];
 foreach($permissions as $permission){
 	foreach($permission['access'] as $access ) {
+		if($access['reference']){
+			continue;
+		}
 		$accessName = $access['name'];
 		
 		if(!isset($invertAccess[ $accessName ]) ) {
 			$invertAccess[ $accessName ] = [];
 		}
 		$invertAccess[ $accessName ]['role'][] =  $permission['role'];
+		$invertAccess[ $accessName ]['role'] = array_unique($invertAccess[$accessName]['role']);
 		$roles[] = $permission['role'];
 		if(isset($access['rule']) && count($access['rule'])){
 			$accessrule = $access['rule'] ?? [];

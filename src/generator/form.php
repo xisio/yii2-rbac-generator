@@ -35,3 +35,13 @@ echo $form->field($generator, 'rbacYamlPath')->error(['encode' => false]);
         <?= $form->field($generator, 'migrationNamespace') ?>
     </div>
 </div>
+
+
+<div class="panel panel-default card">
+    <div class="panel-heading card-header">
+        <?= $form->field($generator, 'generateFilters')->checkbox() ?>
+    </div>
+    <div class="panel-body card-body">
+        <?= $form->field($generator, 'filterNamespace') ?>
+    </div>
+</div>

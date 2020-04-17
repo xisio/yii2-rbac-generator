@@ -24,6 +24,7 @@ use Symfony\Component\Yaml\Yaml;
 
 use xisio\rbacgenerator\helper\ConvertAccessSetToRule;
 use xisio\rbacgenerator\helper\ConvertAccessSetToPermissions;
+use xisio\rbacgenerator\helper\ConvertAccessSetToFilter;
 
 
 class RbacGenerator extends Generator
@@ -69,7 +70,11 @@ class RbacGenerator extends Generator
 	 */
 	public $migrationNamespace = 'app/migrations';
 
+	public $generateFilters = true;
+	public $filterNamespace = 'app/models/filters';
+
 	private $permissions = [];
+	private $filters = [];
 
 
 	/**
@@ -98,7 +103,7 @@ class RbacGenerator extends Generator
 
 				[['accessClassNamespace','migrationNamespace'], 'default', 'value' => null],
 
-				[['generateRbac','generateAccessClass','generateRbacMigrations'], 'boolean'],
+				[['generateRbac','generateAccessClass','generateRbacMigrations','generateFilters'], 'boolean'],
 
 				['rbacYamlPath', 'required'],
 				['rbacYamlPath', 'validateYaml'],
@@ -257,39 +262,115 @@ class RbacGenerator extends Generator
 	}
 
 	private function createPermissions(){
-		if(count($this->permissions)>0){
-			return ;
-		}
-		$defaultRules =  $this->_yaml['default'] ?? [];
-		foreach($this->_yaml['rules'] as $rule){
-			$localRules= [] ; //$defaultRules;
-			$ruleRoles = [];
-			foreach($rule['access'] as $role=>$access){
-				$defaultAccess = $defaultRules[$role] ?? [];
-				$permissionConverter = new ConvertAccessSetToPermissions($access,$rule['class']);
+                if(count($this->permissions)>0){
+                        return ;
+                }
+                $defaultRules =  $this->_yaml['default'] ?? [];
+                foreach($this->_yaml['rules'] as $rule){
+                        $localRules= [] ; //$defaultRules;
+                        $ruleRoles = [];
+                        if(empty($rule['access'])){
+                                if(empty($defaultRules)){
+                                        die('No defaultRules specified. Cannot create access for '.$rules['class']);
+                                }
+                                $rule['access'] = $defaultRules;
+                        }
+                        foreach($rule['access'] as $role=>$access){
+                                $localRules[$role] = '';
+                                $this->permissions[] = $this->convertAccessToPermission($role,$access,$rule);
+                        }
+                        $rules = array_diff_key($defaultRules,$localRules);
+                        if(count($rules)>0){
+                                foreach($rules as $role=>$access){
+                                        $this->permissions[] = $this->convertAccessToPermission($role,$access,$rule);
+                                }
+                        }
+                }
+                /*Create Default Rules*/
+                if(count($defaultRules)> 0){
+                        $tempRule = [
+                                'class' => 'default',
+                                'access' => $defaultRules,
+                        ];	
+                        foreach($tempRule['access'] as $role=>$access){
+                                $this->permissions[] = $this->convertAccessToPermission($role,$access,$tempRule);
+                        }
+
+                }
+
+	}
+        private function createFilters(){
+                if(count($this->filters)>0){
+                        return ;
+                }
+                $defaultRules =  $this->_yaml['default'] ?? [];
+                foreach($this->_yaml['rules'] as $rule){
+                        $localRules= [] ; //$defaultRules;
+                        $ruleRoles = [];
+                        if(empty($rule['access'])){
+                                if(empty($defaultRules)){
+                                        die('No defaultRules specified. Cannot create access for '.$rules['class']);
+                                }
+                                $rule['access'] = $defaultRules;
+                        }
+                        foreach($rule['access'] as $role=>$access){
+                                $localRules[$role] = '';
+                                $filter = $this->convertAccessToFilter($role,$access,$rule);
+                                $this->filters = array_merge($this->filters,$filter);
+                        }
+                        $rules = array_diff_key($defaultRules,$localRules);
+                        if(count($rules)>0){
+                                foreach($rules as $role=>$access){
+                                    $filter = $this->convertAccessToFilter($role,$access,$rule);
+                                    $this->filters = array_merge($this->filters,$filter);
+                                }
+                        }
+                }
+                /*Create Default Rules*/
+                /*
+                  if(count($defaultRules)> 0){
+                          $tempRule = [
+                                  'class' => 'default',
+                                  'access' => $defaultRules,
+                          ];	
+                          foreach($tempRule['access'] as $role=>$access){
+                                  $this->filters[] = $this->convertAccessToFilter($role,$access,$tempRule);
+                          }
+
+                  }
+                */
+                  
+       }
+	private function convertAccessToFilter($role,$access,$rule) {
+				$references = $rule['references'] ?? [];
+				$filterConverter = new ConvertAccessSetToFilter($access,$rule['class'],$references);
+				$filters = $filterConverter->convert();
+        /* hier kann auch ein array von arrays übergeben werden*/
+        $filterList = [];
+        foreach($filters as $filter){
+          $className = $filter['class'];
+          $permission = $filter['permission'];
+          unset($filter['class']);
+          unset($filter['permission']);
+
+          if(!isset($filterList[$className ] )) {
+            $filterList[$className] = [];
+          }
+          $filter['role'] = $role;
+          $filterList[$className][$permission] = $filter;
+        }
+        return $filterList;
+	}
+
+	private function convertAccessToPermission($role,$access,$rule) {
+				$references = $rule['references'] ?? [];
+				$permissionConverter = new ConvertAccessSetToPermissions($access,$rule['class'],$references);
 				$permission = $permissionConverter->convert();
-				$localRules[$role] = '';
-				$this->permissions[] = [
+				return [
 					'role' => $role,
 					'access' => $permission,
 					'class' => $rule['class'],
 				];
-
-			}
-			$rules = array_diff_key($defaultRules,$localRules);
-			if(count($rules)>0){
-				foreach($rules as $role=>$access){
-					$permissionConverter = new ConvertAccessSetToPermissions($access,$rule['class']);
-					$localRules[] = $role;
-					$permission = $permissionConverter->convert();
-					$this->permissions[] = [
-						'role' => $role,
-						'access' => $permission,
-						'class' => $rule['class'],
-					];
-				}
-			}
-		}
 	}
 
 
@@ -323,27 +404,30 @@ class RbacGenerator extends Generator
 			$actions = [];
 			foreach($this->permissions as $permission){
 				$className = $permission['class'];
-				
 				foreach($permission['access'] as $access) {
 					$actionName = $access['action'];
-						if(!isset($actions[$className][$actionName])) {
-							if(!isset($actions[$className])){
-								$actions[$className] = [];
-							}
-							$actions[$className] = array_merge($actions[$className],[
-								$actionName => [
-									'allow' => true,
-									'roles' => [],
-								]
-							]); 
+					if(!isset($actions[$className][$actionName])) {
+						if(!isset($actions[$className])){
+							$actions[$className] = [];
 						}
-					$actions[$className][$actionName]['roles'] = array_merge($actions[$className][$actionName]['roles'],[$permission['role']]);
+						$actions[$className] = array_merge($actions[$className],[
+							$actionName => [
+								'allow' => true,
+								'roles' => [],
+							]
+						]); 
+					}
+					$actions[$className][$actionName]['roles'] = array_merge($actions[$className][$actionName]['roles'],[$access['name']]);
+					$actions[$className][$actionName]['roles'] = array_unique($actions[$className][$actionName]['roles']) ; // = array_merge($actions[$className][$actionName]['roles'],[$permission['role']]);
+          
+					//$actions[$className][$actionName]['roles'] = array_merge($actions[$className][$actionName]['roles'],[$permission['role']]);
+					//$actions[$className][$actionName]['roles'] = array_unique($actions[$className][$actionName]['roles']) ; // = array_merge($actions[$className][$actionName]['roles'],[$permission['role']]);
 				}
 			}
 			foreach($actions as $className=>$access){
-				$className = ucfirst($className).'AccessControl';
+				$className = Inflector::pluralize(ucfirst($className)).'AccessControl';
 				$rules = [];
-
+        
 				foreach($access as $actionName=>$accesscontrol){
 					$accesscontrol['actions']= [$actionName];
 					$rules[] = $accesscontrol;
@@ -359,6 +443,23 @@ class RbacGenerator extends Generator
 				
 			}
 		}
+    if($this->generateFilters){
+      $this->createFilters(); 
+      foreach($this->filters as $className=>$filter){
+
+				$className = Inflector::pluralize(ucfirst($className)).'Filter';
+        $filterPath = $this->getPathFromNamespace($this->filterNamespace);
+				$files[] = new CodeFile(
+					Yii::getAlias("$filterPath/$className.php"),
+					$this->render('filter.php', [
+						'filters' => $filter,
+						'namespaceName' => $this->filterNamespace,
+						'className' => $className,
+					])
+				);
+
+      }
+    }
 		return $files;
 	}
 

@@ -1,20 +1,23 @@
 <?php
 
 namespace xisio\rbacgenerator\helper;
+use Symfony\Component\Inflector\Inflector;
 
 class ConvertAccessSetToPermissions {
 	private $access;
 	private $modelName;
-	public function __construct($access,$modelName){
+	private $references;
+	public function __construct($access,$modelName,array $references=[]){
 		$this->access = $access;
 		$this->modelName = $modelName;
+		$this->references = $references;
 	}	
 
 	public function convert(){
 		$charSet = str_split($this->access);	
 		return $this->convertCharToPermission($charSet);
 	}
-	
+
 	public function convertCharToPermission($charSet){
 		$permission = [] ;
 		$action = '';
@@ -81,10 +84,19 @@ class ConvertAccessSetToPermissions {
 				default : 
 					break;
 			}
+			if(preg_match('/read/',$str)) {
+				$permission[] = [
+					'name' => $str.ucfirst($this->modelName),
+					'rule' => $rule,
+					'action' => 'view',
+					'reference' => false,
+				];
+			}
 			$permission[] = [
 				'name' => $str.ucfirst($this->modelName),
 				'rule' => $rule,
 				'action' => $action,
+				'reference' => false,
 			];
 		}
 		return $permission;
